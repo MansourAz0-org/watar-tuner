@@ -52,6 +52,8 @@ export class VisualEngine {
   private w = 0;
   private h = 0;
   private time = 0;
+  /** Hue and glow of the last full redraw; null = the canvas must be redrawn. */
+  private drawn: { hue: number; glow: number } | null = null;
 
   constructor(
     private canvas: HTMLCanvasElement,
@@ -70,6 +72,7 @@ export class VisualEngine {
       this.particles = [];
       this.rings = [];
     }
+    this.drawn = null;
   }
 
   resize(): void {
@@ -79,6 +82,7 @@ export class VisualEngine {
     this.canvas.width = Math.round(this.w * dpr);
     this.canvas.height = Math.round(this.h * dpr);
     this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    this.drawn = null; // Resizing clears the canvas.
   }
 
   /** Advance by `dt` seconds and draw. */
@@ -109,6 +113,22 @@ export class VisualEngine {
     const targetHue = note ? mixHue(this.noteHue, accuracyHue, 0.55) : TEAL_HUE;
     this.hue = mixHue(this.hue, targetHue, Math.min(1, dt * 4));
     this.glow += (intensity * (note ? 1 : 0.35) - this.glow) * Math.min(1, dt * 6);
+
+    // Idle (nothing moving, colour and glow settled): the canvas already
+    // shows this frame, so skip the full-screen repaint.
+    const drawn = this.drawn;
+    if (
+      drawn &&
+      onsets === 0 &&
+      starts.length === 0 &&
+      this.particles.length === 0 &&
+      this.rings.length === 0 &&
+      !(note && this.quality !== "off") &&
+      Math.abs(((this.hue - drawn.hue + 540) % 360) - 180) < 0.05 &&
+      Math.abs(drawn.glow - this.glow) < 1e-3
+    )
+      return;
+    this.drawn = { hue: this.hue, glow: this.glow };
 
     // Background.
     ctx.globalCompositeOperation = "source-over";
